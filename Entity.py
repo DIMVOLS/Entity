@@ -148,4 +148,3 @@ texts.texts_reciever()
 
 # only entity extracting
 texts.entity_extract(tex1)
-
