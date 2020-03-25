@@ -1,13 +1,12 @@
 import spacy
 import pyap
-import spacy.pipeline
 import re
+import os
 from spacy.pipeline import EntityRuler
 from spacy.tokenizer import Tokenizer
 from spacy.util import compile_prefix_regex, compile_suffix_regex
 from google.cloud import language_v1
 from google.cloud.language_v1 import enums
-import os
 from collections import Counter
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/dim/dm_google_vision.json"
@@ -24,7 +23,7 @@ class EntityComparison:
 
     @staticmethod
     def custom_tokenizer(nlp):
-        infix_re = re.compile(r'''[?\;\‘\’\`\“\”\"\'~]''')
+        infix_re = re.compile(r'''[?;‘’`“”"'~]''')
         prefix_re = compile_prefix_regex(nlp.Defaults.prefixes)
         suffix_re = compile_suffix_regex(nlp.Defaults.suffixes)
 
@@ -38,8 +37,7 @@ class EntityComparison:
         persons = []
         organizations = []
         entities_list = []
-        entities_dict={}
-
+        entities_dict = {}
 
         tax_reg = r'\b(?![01][789]|2[89]|[46]9|7[089]|89|9[67])\d\d-\d{7}\b'
 
@@ -54,7 +52,7 @@ class EntityComparison:
                         r'(?:(?:(?:\d+[ ,])+)?\d+(?:[.,]?\d{1,2}?)?\s*[\$M¢£¥元圓€₹])|'
                         r'(?:(?:\d{1,3}[ ,]?)+[\.]\d{1,2}))')
 
-        eml_reg = (r'([-\w.]+ ?@ ?(?:[A-z0-9][-A-z0-9]+\.)+ ?[A-z]{2,4})')
+        eml_reg = r'([-\w.]+ ?@ ?(?:[A-z0-9][-A-z0-9]+\.)+ ?[A-z]{2,4})'
 
         list1 = {eml_reg: 'EML', currency_reg: 'CURRENCY', tax_reg: 'TAX', phone_reg: 'PHN'}
         for key in list1:
@@ -63,7 +61,6 @@ class EntityComparison:
                 for ent in matches:
                     t = t.replace(ent, '  ', 1)
                     entities_list.append(list1[key])
-                    print(ent, " - ", list1[key])
                     entities_dict[ent] = list1[key]
 
         long_address_matches = pyap.parse(t, country='US')
@@ -72,14 +69,14 @@ class EntityComparison:
             for address in long_address_matches:
                 t = re.sub(str(address), ' ', t)
                 entities_list.append('LOC')
-                #print(str(address), " - ADR1")
+                # print(str(address), " - ADR1")
                 entities_dict[address] = 'LOC'
 
         elif len(short_address_matches) != 0:
             for address in short_address_matches:
                 t = t.replace(str(address), ' ', 1)
                 entities_list.append('LOC')
-                # print(str(address), " - ADR")
+                # print(str(address), " - ADR2")
                 entities_dict[address] = 'LOC'
 
         client = language_v1.LanguageServiceClient()
@@ -93,14 +90,14 @@ class EntityComparison:
         response = client.analyze_entities(document, encoding_type=encoding_type)
 
         # Google extraction
-        list2 = {'PHONE_NUMBER': 'PHN', 'DATE': 'DATE', 'PRICE': 'CURRENCY', 'ORGANIZATION': 'ORG', 'PERSON': 'PERSON'}
+        list2 = {'PHONE_NUMBER': 'PHN', 'DATE': 'DATE', 'PRICE': 'CURRENCY', 'ORGANIZATION': 'ORG', 
+                 'PERSON': 'PERSON','LOCATION':'LOC'}
         for key in list2:
             for entity in response.entities:
                 if enums.Entity.Type(entity.type).name == key:
                     if key == 'ORGANIZATION':
                         organizations.append(entity.name)
                     entities_list.append(list2[key])
-                    print(entity.name)
                     if key == 'PERSON':
                         continue
                     entities_dict[entity.name] = list2[key]
@@ -112,39 +109,41 @@ class EntityComparison:
         ruler = EntityRuler(nlp, overwrite_ents=True)
 
         patterns = [
-            {"label": "TAX", "pattern": [{"TEXT": {"REGEX": "^(?![01][789]|2[89]|[46]9|7[089]|89|9[67])"
-                                                            "\d{2}-\d{7}$"}}]},
+            {"label": "TAX", "pattern": [{"TEXT": {"REGEX": r"^(?![01][789]|2[89]|[46]9|7[089]|89|9[67])"
+                                                            r"\d{2}-\d{7}$"}}]},
             {"label": "URL",
-             "pattern": [{"TEXT": {"REGEX": "^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}&"}}]},
+             "pattern": [{"TEXT": {"REGEX": r"^([a-zA-Z0-9]([a-zA-Z0-9]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$"}}]},
             {"label": "DATE", "pattern": [{"TEXT": {
-                "REGEX": "^(19|20)\d\d-((0[1-9]|1[012])-(0[1-9]|[12]\d)|(0[13-9]|1[012])-30|(0[13578]|1[02])-31)$"}}]},
+                "REGEX": r"^(19|20)\d{2}-((0[1-9]|1[012])-(0[1-9]|[12]\d)|(0[13-9]|1[012])-30|"
+                         r"(0[13578]|1[02])-31)$"}}]},
             {"label": "DATE", "pattern": [
-                {"TEXT": {"REGEX": "^(0?[1-9]|[12][0-9]|3[01])[- /.](0?[1-9]|[12][0-9]|3[01])[- /.](19|20)\d\d$"}}]},
-            {"label": "ZIP", "pattern": [{"TEXT": {"REGEX": "^\d{5}(?:[-\s]\d{4})$"}}]},
-            {"label": "TIME", "pattern": [{"TEXT": {"REGEX": "^(?:(?:[0-1]?[0-9]|2[0-3]):[0-5][0-9](?:[AaPp][Mm])?$)"}}]},
+                {"TEXT": {"REGEX": r"^(0?[1-9]|[12][0-9]|3[01])[- /.](0?[1-9]|[12][0-9]|3[01])[- /.](19|20)\d\d$"}}]},
+            {"label": "ZIP", "pattern": [{"TEXT": {"REGEX": r"^\d{5}(?:[-\s]\d{4})$"}}]},
+            {"label": "TIME",
+             "pattern": [{"TEXT": {"REGEX": "^(?:(?:[0-1]?[0-9]|2[0-3]):[0-5][0-9](?:[AaPp][Mm])?$)"}}]},
             {"label": "PHONE",
              "pattern": [{'LOWER': {'IN': ['phone', 'telephone', 'cell-phone', 'cellphone', 'cellular',
                                            'cell']}},
-                         {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
-                         {"TEXT": {"REGEX": "(?:\+?[\/\(\)-.*\d]{3,18})"}},
-                         {"TEXT": {"REGEX": "(?:\+?[\/\(\)-.\* ]*\d{2,3}[\/\(\)-.\* ]*)"}, 'OP': '*'}]},
+                         {"TEXT": {"REGEX": r'\W'}, 'OP': '?'},
+                         {"TEXT": {"REGEX": r"(?:\+?[\/\(\)-.*\d]{3,18})"}},
+                         {"TEXT": {"REGEX": r"(?:\+?[\/\(\)-.\* ]*\d{2,3}[\/\(\)-.\* ]*)"}, 'OP': '*'}]},
             {"label": "LOC", "pattern": [{'LOWER': {'IN': ['address', 'adr']}},
-                                         {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
-                                         {"TEXT": {"REGEX": "([\w.]{1,15})"}, 'OP': '+'}]},
-            {"label": "CURRENCY", "pattern": [{'LOWER':  {'IN': ['total', 'amount', 'balance', 'USD', 'due',
-                                                                          'summary', 'worth', 'dollars', 'cost',
-                                                                          'discount',
-                                                                          'payment', 'val', 'price', ]}},
-                                              {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
-                                              {"TEXT": {"REGEX": "(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]},
+                                         {"TEXT": {"REGEX": r'\W'}, 'OP': '?'},
+                                         {"TEXT": {"REGEX": r"([\w.]{1,15})"}, 'OP': '+'}]},
+            {"label": "CURRENCY", "pattern": [{'LOWER': {'IN': ['total', 'amount', 'balance', 'USD', 'due',
+                                                                'summary', 'worth', 'dollars', 'cost',
+                                                                'discount',
+                                                                'payment', 'val', 'price', ]}},
+                                              {"TEXT": {"REGEX": r'\W'}, 'OP': '?'},
+                                              {"TEXT": {"REGEX": r"(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]},
             {"label": "CURRENCY", "pattern": [{'LEMMA': {'IN': ['pay', 'earn', 'win',
-                                                                 'refund', 'spend',
-                                                                 'save', 'invest',
-                                                                 'send', 'return', 'own', 'borrow', 'make',
-                                                                 'inherit',
-                                                                 'find', 'waste', 'lose', 'lend']}},
-                                               {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
-                                               {"TEXT": {"REGEX": "(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]}
+                                                                'refund', 'spend',
+                                                                'save', 'invest',
+                                                                'send', 'return', 'own', 'borrow', 'make',
+                                                                'inherit',
+                                                                'find', 'waste', 'lose', 'lend']}},
+                                              {"TEXT": {"REGEX": r'\W'}, 'OP': '?'},
+                                              {"TEXT": {"REGEX": r"(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]}
 
         ]
         ruler.add_patterns(patterns)
@@ -166,7 +165,7 @@ class EntityComparison:
             entities_list.append(entity.label_)
             entities_dict[entity.text] = entity.label_
             # print(entity.text, "-", entity.label_)
-        #print(entities_dict)
+        # print(entities_dict)
 
         return entities_dict
 
@@ -190,22 +189,21 @@ class EntityComparison:
         else:
             print('YES')
 
-
 # Text examples
-#tex1 = (' Dan Fink LLC.'
+# tex1 = (' Dan Fink LLC.'
 #        '     5 643$'
 #        ' 2342 East Broadway'
 #        ' phone:78787132123 TAX # 86-0813450')
 
-#tex2 = ('Alex  so today'
+# tex2 = ('Alex  so today'
 #        ' Romashka Ltd.'
 #        ' 2481 Es 22nd St TUCSON, AZ 34343'
 #        ' March 3'
 #        ' Subtotal: 2324')
 
 # Comparing 2 texts
-#texts = EntityComparison(tex1, tex2)
-#texts.texts_reciever()
+# texts = EntityComparison(tex1, tex2)
+# texts.texts_reciever()
 
 # Only entity extracting
-#texts.entity_extract(tex2)
+# texts.entity_extract(tex2)
