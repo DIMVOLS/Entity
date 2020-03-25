@@ -38,30 +38,22 @@ class EntityComparison:
         organizations = []
         entities_list = []
         entities_dict = {}
-
+        time_reg = r'(?: |^)(?:[0-1]?[0-9]|2[0-3])(?:: [0-5][0-9]){2}\s?(?:[AaPp][Mm])?(?: |$)'
         tax_reg = r'\b(?![01][789]|2[89]|[46]9|7[089]|89|9[67])\d\d-\d{7}\b'
+        zip_reg = r'\W\d{5}(?:[-\s]\d{4})\W'
 
-        short_address = re.compile(r'(?:\W|^)(\d{1,4}[a-zA-Z .]{2,10}[\w\s]{2,20} ?(?:street|st|avenue|ave|road|rd'
+        short_address = re.compile(r'\W(\d{1,4}[a-zA-Z .]{2,10}[\w\s]{2,20} (?:street|st|avenue|ave|road|rd'
                                    r'|highway|hwy|square|sq|trail|trl|drive|dr|court|ct|park|parkway|pkwy|circle'
-                                   r'|cir|boulevard|blvd|way|place|route|avn|lane|av))(?:\W|$)', re.IGNORECASE)
+                                   r'|cir|boulevard|blvd|way|place|route|avn|lane|av))\W', re.IGNORECASE)
 
-        phone_reg = (r'(?:(?:\+?\d{1,3}?[-.* ]?){0,2}(?:\+?\(?\d{3}\)? ?[-.\/* ]?)? ?\d{3}[-.*]?'
-                     r'\d{3,5}(?![\d-]))')
+        phone_reg = (r'(?:(?:\+?\d{1,3}?[-.* ]?){0,2}(?:\+?\(?\d{3}\)? ?[-.\/* ]?)? ?'
+                     r'\d{3}[-.* ]\d{3,5}(?![\d-]))')
 
         currency_reg = (r'(?:(?:[\$M¢£¥元圓€₹]\s*(?:(?:\d+[ ,])+)?\d+(?:[.,]?\d\d?)?)|'
                         r'(?:(?:(?:\d+[ ,])+)?\d+(?:[.,]?\d{1,2}?)?\s*[\$M¢£¥元圓€₹])|'
-                        r'(?:(?:\d{1,3}[ ,]?)+[\.]\d{1,2}))')
+                        r'(?:(?:\d{1,3}[ ,]?)+[\.]\d{1,2})(?:\s|$))')
 
         eml_reg = r'([-\w.]+ ?@ ?(?:[A-z0-9][-A-z0-9]+\.)+ ?[A-z]{2,4})'
-
-        list1 = {eml_reg: 'EML', currency_reg: 'CURRENCY', tax_reg: 'TAX', phone_reg: 'PHN'}
-        for key in list1:
-            matches = re.findall(key, t)
-            if len(matches) != 0:
-                for ent in matches:
-                    t = t.replace(ent, '  ', 1)
-                    entities_list.append(list1[key])
-                    entities_dict[ent] = list1[key]
 
         long_address_matches = pyap.parse(t, country='US')
         short_address_matches = short_address.findall(t)
@@ -79,6 +71,16 @@ class EntityComparison:
                 # print(str(address), " - ADR2")
                 entities_dict[address] = 'LOC'
 
+        list1 = {time_reg: 'TIME', zip_reg: 'ZIP', eml_reg: 'EML', currency_reg: 'CURRENCY',
+                 tax_reg: 'TAX', phone_reg: 'PHN'}
+        for key in list1:
+            matches = re.findall(key, t)
+            if len(matches) != 0:
+                for ent in matches:
+                    t = t.replace(ent, '  ', 1)
+                    entities_list.append(list1[key])
+                    entities_dict[ent] = list1[key]
+
         client = language_v1.LanguageServiceClient()
         type_ = enums.Document.Type.PLAIN_TEXT
 
@@ -90,19 +92,21 @@ class EntityComparison:
         response = client.analyze_entities(document, encoding_type=encoding_type)
 
         # Google extraction
-        list2 = {'PHONE_NUMBER': 'PHN', 'DATE': 'DATE', 'PRICE': 'CURRENCY', 'ORGANIZATION': 'ORG', 
-                 'PERSON': 'PERSON','LOCATION':'LOC'}
+        list2 = {'PHONE_NUMBER': 'PHN', 'DATE': 'DATE', 'PRICE': 'CURRENCY', 'ORGANIZATION': 'ORG1',
+                 'PERSON': 'PERSON', 'LOCATION': 'LOC1'}
         for key in list2:
             for entity in response.entities:
                 if enums.Entity.Type(entity.type).name == key:
                     if key == 'ORGANIZATION':
                         organizations.append(entity.name)
+                        continue
                     entities_list.append(list2[key])
                     if key == 'PERSON':
+                        persons.append(entity.name)
                         continue
                     entities_dict[entity.name] = list2[key]
                     t = t.replace(entity.name, '  ', 1)
-        # print(t)
+
         nlp = spacy.load("en_core_web_sm")
         # Changing default tokenizer to created
         nlp.tokenizer = self.custom_tokenizer(nlp)
@@ -118,12 +122,9 @@ class EntityComparison:
                          r"(0[13578]|1[02])-31)$"}}]},
             {"label": "DATE", "pattern": [
                 {"TEXT": {"REGEX": r"^(0?[1-9]|[12][0-9]|3[01])[- /.](0?[1-9]|[12][0-9]|3[01])[- /.](19|20)\d\d$"}}]},
-            {"label": "ZIP", "pattern": [{"TEXT": {"REGEX": r"^\d{5}(?:[-\s]\d{4})$"}}]},
-            {"label": "TIME",
-             "pattern": [{"TEXT": {"REGEX": "^(?:(?:[0-1]?[0-9]|2[0-3]):[0-5][0-9](?:[AaPp][Mm])?$)"}}]},
             {"label": "PHONE",
              "pattern": [{'LOWER': {'IN': ['phone', 'telephone', 'cell-phone', 'cellphone', 'cellular',
-                                           'cell']}},
+                                           'cell', 'fax']}},
                          {"TEXT": {"REGEX": r'\W'}, 'OP': '?'},
                          {"TEXT": {"REGEX": r"(?:\+?[\/\(\)-.*\d]{3,18})"}},
                          {"TEXT": {"REGEX": r"(?:\+?[\/\(\)-.\* ]*\d{2,3}[\/\(\)-.\* ]*)"}, 'OP': '*'}]},
@@ -151,16 +152,20 @@ class EntityComparison:
         nlp.add_pipe(ruler, before="ner")
         doc = nlp(t)
         gen = (ents for ents in doc.ents if ents.label_ not in ['DATE'])
+
         for entity in gen:
             if entity.label_ == 'ORG':
-                if entity.text in persons:
-                    entities_dict[entity.text] = 'ORG'
-                elif entity.text not in entities_dict:
+                if any([True for x in [organizations, persons] if entity.text in str(x)]):
+                    entities_dict[entity.text] = 'ORG2'
                     continue
-            elif entity.label_ != 'PERSON':
-                if entity.text in persons:
-                    entities_dict[entity.text] = 'PERSON'
+                else:
+                    for words in organizations:
+                        if words in entity.text:
+                            entities_dict[entity.text] = 'ORG2'
                     continue
+            elif entity.text in str(persons) or [True for x in persons if x in entity.text]:
+                entities_dict[entity.text] = 'PERSON'
+                continue
 
             entities_list.append(entity.label_)
             entities_dict[entity.text] = entity.label_
@@ -189,17 +194,6 @@ class EntityComparison:
         else:
             print('YES')
 
-# Text examples
-# tex1 = (' Dan Fink LLC.'
-#        '     5 643$'
-#        ' 2342 East Broadway'
-#        ' phone:78787132123 TAX # 86-0813450')
-
-# tex2 = ('Alex  so today'
-#        ' Romashka Ltd.'
-#        ' 2481 Es 22nd St TUCSON, AZ 34343'
-#        ' March 3'
-#        ' Subtotal: 2324')
 
 # Comparing 2 texts
 # texts = EntityComparison(tex1, tex2)
