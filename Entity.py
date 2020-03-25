@@ -14,6 +14,7 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/dim/dm_google_vision.json"
 
 
 class EntityComparison:
+
     def __init__(self, text1=None, text2=None):
         self.text1 = text1
         self.text2 = text2
@@ -34,42 +35,36 @@ class EntityComparison:
 
     def entity_extract(self, text):
         t = text
-        print(t)
+        persons = []
+        organizations = []
         entities_list = []
-        # Loop through entitites returned from the API
+        entities_dict={}
 
-        tax_regex = r'\b(?![01][789]|2[89]|[46]9|7[089]|89|9[67])\d\d-\d{7}\b'
-        tax_matches = re.findall(tax_regex, t)
 
-        short_address = re.compile(r'(?: |^)(\d{1,4}[a-zA-Z .]{2,10}[\w\s]{2,20} (?:street|st|avenue|ave|road|rd|'
-                                   r'highway|hwy|square|sq|trail|trl|drive|dr|court|ct|park|parkway|pkwy|circle|cir|'
-                                   r'boulevard|blvd|way|place|route|avn|lane|av))(?:|$)', re.IGNORECASE)
+        tax_reg = r'\b(?![01][789]|2[89]|[46]9|7[089]|89|9[67])\d\d-\d{7}\b'
 
-        phone_reg = (r'(?:(?:\d{2}-)?(?:\+?\d{1,3}?[-.* ]?){0,2}(?:\+?\(?\d{3}\)? ?[-.\/* ]?)? ?\d{3}[-.*]?'
-                     r'\d{4,5}(?![\d-]))')
-        currency_reg = (r'(?:\s|^)(?:(?:[\$M¢£¥元圓€₹]\s*(?:(?:\d+[ ,])+)?\d+(?:[.,]?\d\d?)?)|'
+        short_address = re.compile(r'(?:\W|^)(\d{1,4}[a-zA-Z .]{2,10}[\w\s]{2,20} ?(?:street|st|avenue|ave|road|rd'
+                                   r'|highway|hwy|square|sq|trail|trl|drive|dr|court|ct|park|parkway|pkwy|circle'
+                                   r'|cir|boulevard|blvd|way|place|route|avn|lane|av))(?:\W|$)', re.IGNORECASE)
+
+        phone_reg = (r'(?:(?:\+?\d{1,3}?[-.* ]?){0,2}(?:\+?\(?\d{3}\)? ?[-.\/* ]?)? ?\d{3}[-.*]?'
+                     r'\d{3,5}(?![\d-]))')
+
+        currency_reg = (r'(?:(?:[\$M¢£¥元圓€₹]\s*(?:(?:\d+[ ,])+)?\d+(?:[.,]?\d\d?)?)|'
                         r'(?:(?:(?:\d+[ ,])+)?\d+(?:[.,]?\d{1,2}?)?\s*[\$M¢£¥元圓€₹])|'
-                        r'(?:(?:\d{1,3}[ ,]?)+[\.]\d{1,2}))(?:\s|$)')
-        currency_matches = re.findall(currency_reg, t)
+                        r'(?:(?:\d{1,3}[ ,]?)+[\.]\d{1,2}))')
 
-        if len(currency_matches) != 0:
-            for currency in currency_matches:
-                t = t.replace(currency, ' ', 1)
-                entities_list.append('MONEY')
-                # print(currency, " - MONEY")
+        eml_reg = (r'([-\w.]+ ?@ ?(?:[A-z0-9][-A-z0-9]+\.)+ ?[A-z]{2,4})')
 
-        if len(tax_matches) != 0:
-            for tax in tax_matches:
-                t = t.replace(tax, ' ', 1)
-                entities_list.append('TAX')
-                # print(tax, " - TAX")
-
-        phone_matches = re.findall(phone_reg, t)
-        if len(phone_matches) != 0:
-            for phone in phone_matches:
-                t = t.replace(phone, ' ', 1)
-                entities_list.append('PHN')
-                # print(str(phone), " - PHN")
+        list1 = {eml_reg: 'EML', currency_reg: 'CURRENCY', tax_reg: 'TAX', phone_reg: 'PHN'}
+        for key in list1:
+            matches = re.findall(key, t)
+            if len(matches) != 0:
+                for ent in matches:
+                    t = t.replace(ent, '  ', 1)
+                    entities_list.append(list1[key])
+                    print(ent, " - ", list1[key])
+                    entities_dict[ent] = list1[key]
 
         long_address_matches = pyap.parse(t, country='US')
         short_address_matches = short_address.findall(t)
@@ -77,46 +72,39 @@ class EntityComparison:
             for address in long_address_matches:
                 t = re.sub(str(address), ' ', t)
                 entities_list.append('LOC')
-                # print(str(address), " - ADR1")
+                #print(str(address), " - ADR1")
+                entities_dict[address] = 'LOC'
 
         elif len(short_address_matches) != 0:
             for address in short_address_matches:
                 t = t.replace(str(address), ' ', 1)
                 entities_list.append('LOC')
-                # print(str(address), " - ADR2")
+                # print(str(address), " - ADR")
+                entities_dict[address] = 'LOC'
 
         client = language_v1.LanguageServiceClient()
-
         type_ = enums.Document.Type.PLAIN_TEXT
+
         language = "en"
         document = {"content": t, "type": type_, "language": language}
+
+        # Available values: NONE, UTF8, UTF16, UTF32
         encoding_type = enums.EncodingType.UTF8
         response = client.analyze_entities(document, encoding_type=encoding_type)
-        persons = []
-        organizations = []
+
         # Google extraction
-        for entity in response.entities:
-            if enums.Entity.Type(entity.type).name == 'PHONE_NUMBER':
-                t = t.replace(entity.name, ' ', 1)
-                entities_list.append('PHN')
-            if enums.Entity.Type(entity.type).name == 'DATE':
-                t = t.replace(entity.name, ' ', 1)
-                entities_list.append('DATE')
-                # print(entity.name, "DATE1")
-            elif enums.Entity.Type(entity.type).name == 'PRICE':
-                t = t.replace(entity.name, ' ', 1)
-                entities_list.append('CURRENCY')
-                # print(entity.name, "MONEY1")
-            elif enums.Entity.Type(entity.type).name == 'PERSON':
-                entities_list.append('PERSON')
-                persons.append(entity.name)
-                # print(entity.name,"PERSON")
-            elif enums.Entity.Type(entity.type).name == 'ORGANIZATION':
-                if entity.salience > 0.1 and entity.name in t:
-                    organizations.append(entity.name)
-                    entities_list.append('ORG')
-                    t = t.replace(entity.name, ' ', 1)
-                    # print(entity.name, "ORG1")
+        list2 = {'PHONE_NUMBER': 'PHN', 'DATE': 'DATE', 'PRICE': 'CURRENCY', 'ORGANIZATION': 'ORG', 'PERSON': 'PERSON'}
+        for key in list2:
+            for entity in response.entities:
+                if enums.Entity.Type(entity.type).name == key:
+                    if key == 'ORGANIZATION':
+                        organizations.append(entity.name)
+                    entities_list.append(list2[key])
+                    print(entity.name)
+                    if key == 'PERSON':
+                        continue
+                    entities_dict[entity.name] = list2[key]
+                    t = t.replace(entity.name, '  ', 1)
         # print(t)
         nlp = spacy.load("en_core_web_sm")
         # Changing default tokenizer to created
@@ -126,40 +114,61 @@ class EntityComparison:
         patterns = [
             {"label": "TAX", "pattern": [{"TEXT": {"REGEX": "^(?![01][789]|2[89]|[46]9|7[089]|89|9[67])"
                                                             "\d{2}-\d{7}$"}}]},
-            {"label": "EML", "pattern": [{"TEXT": {"REGEX": "^[-\w.]+@([A-z0-9][-A-z0-9]+\.)+[A-z]{2,4}$"}}]},
             {"label": "URL",
              "pattern": [{"TEXT": {"REGEX": "^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}&"}}]},
             {"label": "DATE", "pattern": [{"TEXT": {
                 "REGEX": "^(19|20)\d\d-((0[1-9]|1[012])-(0[1-9]|[12]\d)|(0[13-9]|1[012])-30|(0[13578]|1[02])-31)$"}}]},
             {"label": "DATE", "pattern": [
                 {"TEXT": {"REGEX": "^(0?[1-9]|[12][0-9]|3[01])[- /.](0?[1-9]|[12][0-9]|3[01])[- /.](19|20)\d\d$"}}]},
-            {"label": "ZIP", "pattern": [{"TEXT": {"REGEX": "^\d{5}(?:[-\s]\d{4})?$"}}]},
-            {"label": "TIME", "pattern": [{"TEXT": {"REGEX": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"}}]},
-            {"label": "CURRENCY", "pattern": [{'LOWER': {'IN': ['total', 'amount', 'subtotal', 'balance', 'USD', 'due',
-                                                             'summary', 'worth', 'dollars', 'cost', 'discount',
-                                                             'paid', 'val', 'price']}},
-                                           {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
-                                           {"TEXT": {"REGEX": "(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]},
-            {"label": "CURRENCY", "pattern": [{'LEMMA': {'IN': ['pay', 'earn', 'win', 'refund', 'spend', 'save', 'invest',
-                                                             'send', 'return', 'own', 'borrow', 'make', 'inherit',
-                                                             'find', 'waste', 'lose', 'lend']}},
-                                           {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
-                                           {"TEXT": {"REGEX": "(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]}
+            {"label": "ZIP", "pattern": [{"TEXT": {"REGEX": "^\d{5}(?:[-\s]\d{4})$"}}]},
+            {"label": "TIME", "pattern": [{"TEXT": {"REGEX": "^(?:(?:[0-1]?[0-9]|2[0-3]):[0-5][0-9](?:[AaPp][Mm])?$)"}}]},
+            {"label": "PHONE",
+             "pattern": [{'LOWER': {'IN': ['phone', 'telephone', 'cell-phone', 'cellphone', 'cellular',
+                                           'cell']}},
+                         {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
+                         {"TEXT": {"REGEX": "(?:\+?[\/\(\)-.*\d]{3,18})"}},
+                         {"TEXT": {"REGEX": "(?:\+?[\/\(\)-.\* ]*\d{2,3}[\/\(\)-.\* ]*)"}, 'OP': '*'}]},
+            {"label": "LOC", "pattern": [{'LOWER': {'IN': ['address', 'adr']}},
+                                         {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
+                                         {"TEXT": {"REGEX": "([\w.]{1,15})"}, 'OP': '+'}]},
+            {"label": "CURRENCY", "pattern": [{'LOWER':  {'IN': ['total', 'amount', 'balance', 'USD', 'due',
+                                                                          'summary', 'worth', 'dollars', 'cost',
+                                                                          'discount',
+                                                                          'payment', 'val', 'price', ]}},
+                                              {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
+                                              {"TEXT": {"REGEX": "(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]},
+            {"label": "CURRENCY", "pattern": [{'LEMMA': {'IN': ['pay', 'earn', 'win',
+                                                                 'refund', 'spend',
+                                                                 'save', 'invest',
+                                                                 'send', 'return', 'own', 'borrow', 'make',
+                                                                 'inherit',
+                                                                 'find', 'waste', 'lose', 'lend']}},
+                                               {"TEXT": {"REGEX": '\W'}, 'OP': '?'},
+                                               {"TEXT": {"REGEX": "(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]}
+
         ]
         ruler.add_patterns(patterns)
         # Priority of ruler
         nlp.add_pipe(ruler, before="ner")
         doc = nlp(t)
-        for entity in doc.ents:
-            if entity.label_ == 'ORG' and entity.text in persons:
-                entities_list.remove('PERSON')
-            if entity.label_ == 'PERSON' and entity.text in persons:
-                continue
-            entities_list.append(entity.label_)
-            # print(entity.text, "-", entity.label_)
-        print(sorted(entities_list))
+        gen = (ents for ents in doc.ents if ents.label_ not in ['DATE'])
+        for entity in gen:
+            if entity.label_ == 'ORG':
+                if entity.text in persons:
+                    entities_dict[entity.text] = 'ORG'
+                elif entity.text not in entities_dict:
+                    continue
+            elif entity.label_ != 'PERSON':
+                if entity.text in persons:
+                    entities_dict[entity.text] = 'PERSON'
+                    continue
 
-        return entities_list
+            entities_list.append(entity.label_)
+            entities_dict[entity.text] = entity.label_
+            # print(entity.text, "-", entity.label_)
+        #print(entities_dict)
+
+        return entities_dict
 
     @staticmethod
     def compare_entities(entities_list, entities_list2):
