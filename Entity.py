@@ -68,7 +68,7 @@ class EntityComparison:
             for address in short_address_matches:
                 t = t.replace(str(address), ' ', 1)
                 entities_list.append('LOC')
-                # print(str(address), " - ADR2")
+                #  print(str(address), " - ADR2")
                 entities_dict[address] = 'LOC'
 
         list1 = {time_reg: 'TIME', zip_reg: 'ZIP', eml_reg: 'EML', currency_reg: 'CURRENCY',
