@@ -6,8 +6,8 @@ import math
 
 #doc_id = 'c8e9b14bea8c438c8fbc983ac22b7600' #4.jpg
 #doc_id = 'ae620e6ac5a14a95998d2fdd60ce1c76' #20.pdf
-#doc_id = '918ebbccbe144428a7089ffa9d550c96' #1.png
-doc_id='72b74feba3c2456cafd64a53f0e93b35'    #3.png
+doc_id = '918ebbccbe144428a7089ffa9d550c96' #1.png
+#doc_id='72b74feba3c2456cafd64a53f0e93b35'    #3.png
 #doc_id='8d9d7979471e49439f4065ce35722d52'    #5.png
 #doc_id='edbe20b8959e4f1bb0e68b4cb4a52c5b'    #25.pdf
 #doc_id='f5d11cf0148e45c3b6b2b40266ac179d'     #16.pdf
@@ -94,7 +94,7 @@ size=([x/max_size for x in size])
 w_case=[(y*z) for y,z in zip(case,w_percent)]
 size_case=([x+y for x,y in zip(size,w_case)])
 #print("size+case2: ",size_case)
-Features=[x*0.9+(z*c)*0.5+(y*b)*0.2 for x,y,z,c,b in zip(size,w_percent,block_height_loc,block_center,case)]
+Features=[x+(z*c)*0.6+(y*b)*0.3 for x,y,z,c,b in zip(size,w_percent,block_height_loc,block_center,case)]
 Final=dict(zip(Features,Texts))
 print("MAIN HEADING - ",Final[max(Final)])
 print("----------------------------------------------------------------------------------------------------------")
@@ -110,21 +110,19 @@ plt.xlabel("Block")
 plt.plot(np.arange(0,len(page.blocks)),size,label="size")
 plt.legend()
 plt.figure()
-plt.ylabel("Case")
-plt.xlabel("Block")  
-plt.plot(np.arange(0,len(page.blocks)),case,label="case")
-plt.legend()
-plt.figure()
 plt.ylabel("Center")
 plt.xlabel("Block")  
 plt.plot(np.arange(0,len(page.blocks)),block_center,label="center")
 plt.legend()
-plt.figure()
 plt.ylabel("Height_location")
 plt.xlabel("Block")  
 plt.plot(np.arange(0,len(page.blocks)),block_height_loc,label="height_location")
 plt.legend()
 plt.figure()
+plt.ylabel("Case")
+plt.xlabel("Block")  
+plt.plot(np.arange(0,len(page.blocks)),case,label="case")
+plt.legend()
 plt.ylabel("Words_amount_percent")
 plt.xlabel("Block")  
 plt.plot(np.arange(0,len(page.blocks)),w_percent,label="w_percent")
@@ -132,7 +130,7 @@ plt.legend()
 plt.figure()
 plt.ylabel("Features")
 plt.xlabel("Block")  
-plt.plot(np.arange(0,len(page.blocks)),[x*0.9+(z*c)*0.5+(y*b)*0.2 for x,y,z,c,b in zip(size,w_percent,block_height_loc,block_center,case)],label="Final")
+plt.plot(np.arange(0,len(page.blocks)),[x+(z*c)*0.6+(y*b)*0.3 for x,y,z,c,b in zip(size,w_percent,block_height_loc,block_center,case)],label="Final")
 plt.legend()
 plt.show()      
 
