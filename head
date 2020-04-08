@@ -1,0 +1,263 @@
+import numpy as np
+import pickle
+import math
+import nltk
+
+from statistics import mode, mean
+
+# doc_id='77cd57f12232460986766ddda35b4b07' #8.png
+# doc_id='a33f104af2574befbecfcd257ca6d2fc' #10.png
+# doc_id='1d6aa3f73e354354ade7418991b5e715'  #2.png
+# doc_id = 'c8e9b14bea8c438c8fbc983ac22b7600' #4.jpg
+# doc_id = 'ae620e6ac5a14a95998d2fdd60ce1c76' #20.pdf
+# doc_id = '918ebbccbe144428a7089ffa9d550c96' #1.png
+doc_id = 'ae37f271db7b498dabb19a0639433cc5'  # 3.png
+# doc_id='8d9d7979471e49439f4065ce35722d52'    #5.png
+# doc_id='edbe20b8959e4f1bb0e68b4cb4a52c5b'    #25.pdf
+# doc_id='f5d11cf0148e45c3b6b2b40266ac179d'     #16.pdf
+# doc_id='3f8ae2df94824b3382305e9474ab40b1'      #10.pdf
+# doc_id='1840379e455a4d09899d0ff69235effe'    #10-1.pdf
+# doc_id='6773c526e29e402c8077331a7ae59348'    #10-2.pdf
+# doc_id='7cf28796e51a491397ad7886e3c96b78'     #10-3.pdf
+# doc_id='e9c24931ffa84a7d801851eb433a3779'    #10-4.pdf
+# doc_id='a89140e96b134499b8a9dee111cda140'    #10-5.pdf
+# doc_id='1f55083d0a204bcdbfb8e4ee924dc2c1'    #10-6.pdf
+# doc_id='ede60de83ace44208c3b89df3ef22698'    #10-7.pdf
+# doc_id='5b47cabd04d9471cb86fc5d7a71c2133'    #10-8.pdf
+# doc_id='6a9c0fc4b8ea475b8be93736600bffa9'    #10-9.pdf
+# doc_id='9375e0e91a7c43bfb5b0b1164b8ec3f4'     #11.png
+# doc_id='2afbf98005394bc1a5701a11d8935fb6'     #12-1.png
+# doc_id='111e7ecada8c4cac9455603448ef96c1'     #13.png
+
+with open('tmp/local_storage/{}.dm'.format(doc_id), 'rb') as mf:
+    doc = pickle.load(mf)
+page = doc.pages[0]
+
+
+print("------------------------------------------------------------------------------------------------------------")
+
+
+class Feature:
+    def __init__(self,block):
+
+        self.block=block
+        self.page = block.page
+        self.block_words = " ".join([word.value for line in block.lines for word in line.words])
+        self.value = self.calculate_value()
+
+    def __repr__(self):
+        return self.value
+
+    def calculate_value(self):
+        return None
+
+
+class Size(Feature):
+    def calculate_value(self):
+        lines_height = []
+        s_width = []
+        for line in self.block.lines:
+            l_Top = line.bbox[1]
+            l_Bottom = line.bbox[3]
+            lines_height.append(l_Bottom - l_Top)
+            for word in line.words:
+                s_width.append(word.get_symbol_sizes()[0][0])
+        return mean(lines_height), mean(s_width)
+
+
+class Case(Feature):
+    def calculate_value(self):
+        uc_words1 = 0
+        t_words1 = 0
+        for line in self.block.lines:
+            for word in line.words:
+                # add different weights for types
+                if word.value.isupper():
+                    uc_words1 = uc_words1 + 1
+                elif word.value.istitle():
+                    t_words1 = t_words1 + 1
+        return (t_words1 + uc_words1) / len(self.block_words.split())
+
+
+class Words_amount(Feature):
+    def calculate_value(self):
+        block_w_amount = (len(self.block_words.split()))
+        return block_w_amount
+
+
+class Top_location(Feature):
+    def calculate_value(self):
+        top_location = self.block.bbox[3] / self.page.bbox[3]
+        return top_location
+
+
+class Block_empt(Feature):
+    def calculate_value(self):
+        block_empt = (self.block.bbox[0] + (self.page.bbox[3] - self.block.bbox[2])) / 2
+        return block_empt
+
+
+class Tags(Feature):
+    def calculate_value(self):
+        pos_tagged = nltk.pos_tag(nltk.word_tokenize(self.block_words))
+
+        nouns = list(filter(lambda x: x[1] in ('NN', 'NNS', 'NNP', 'NNPS'), pos_tagged))
+        verbs = list(filter(lambda x: x[1] in ('VB', 'VBD', 'VBZ', 'VBG', 'VBP', 'VBN', 'MD'), pos_tagged))
+        digits = list(filter(lambda x: x[1] == 'CD', pos_tagged))
+
+        if len(digits) > 0 or len(verbs) > 1 or len(nouns) < 1:
+            tag = 0
+        else:
+            if any([True for x in ['link:', 'http:', 'https:', 'www.', '.com', '.html'] if x in self.block_words]):
+                tag = 0
+            else:
+                tag = 1
+
+        return tag
+
+
+class Spec_symbols(Feature):
+    def calculate_value(self):
+        if any([True for x in [';', ',', '//', ':',
+                               '<', '>', '*'] if x in self.block_words]) or self.block_words.endswith('.'):
+            spec_symbols = 0
+        else:
+            spec_symbols = 1
+        return spec_symbols
+
+
+class Lines_amount(Feature):
+    def calculate_value(self):
+        lines_amount = (self.page.bbox[1] - self.block.bbox[1]) / self.block.features[0].value[0]
+
+        return lines_amount
+
+
+class Block_center(Feature):
+    def calculate_value(self):
+        block_center = min(self.block.bbox[0], (p_Right - self.block.bbox[2]))
+        return block_center
+
+
+b_h_loc = []
+confidence_score = []
+case = []
+l_height = []
+b_w_amount = []
+block_empt = []
+block_center = []
+Texts = []
+symbol_w=[]
+tags = []
+lines_amount = []
+spec_symbols = []
+p_Left, p_Top, p_Right, p_Bottom = page.bbox[0], page.bbox[1], page.bbox[2], page.bbox[3]
+b_Bottom = p_Top
+results = []
+
+def check_headings(page):
+    for block in page.blocks:
+
+        block.features.append(Size(block))
+        block.features.append(Case(block))
+        block.features.append(Words_amount(block))
+        block.features.append(Top_location(block))
+        block.features.append(Block_empt(block))
+        block.features.append(Tags(block))
+        block.features.append(Spec_symbols(block))
+        block.features.append(Lines_amount(block))
+        block.features.append(Block_center(block))
+
+        l_height.append(block.features[0].value[0])
+        symbol_w.append(block.features[0].value[1])
+        case.append(block.features[1].value)
+        b_w_amount.append(block.features[2].value)
+        b_h_loc.append(block.features[3].value)
+        block_empt.append(block.features[4].value)
+        tags.append(block.features[5].value)
+        spec_symbols.append(block.features[6].value)
+        lines_amount.append(block.features[7].value)
+        block_center.append(block.features[8].value)
+
+        Texts.append(" ".join([word.value for line in block.lines for word in line.words]))
+
+check_headings(page)
+# Normalize features from 0 to 1
+
+b_w_amount = ([1 - x / mean(b_w_amount) if x < mean(b_w_amount) else 0 for x in b_w_amount])
+
+b_h_loc = ([1 - (x - min(b_h_loc)) / (max(b_h_loc) - min(b_h_loc)) for x in b_h_loc])
+
+l_height = [(x - min(l_height)) / (max(l_height) - min(l_height)) for x in l_height]
+
+symbol_w = [(x - min(symbol_w)) / (max(symbol_w) - min(symbol_w)) for x in symbol_w]
+
+block_empt = [(x - min(block_empt)) / (max(block_empt) - min(block_empt)) for x in block_empt]
+
+block_center = [(x - min(block_center)) / (max(block_center) - min(block_center)) for x in block_center]
+
+case = [x if x >= 0.5 else 0 for x in case]
+
+if any([True for x in case if x > 0.5]):
+    case = [(x - min(case)) / (max(case) - min(case)) for x in case]
+else:
+    case = [0] * len(case)
+
+Features = [x * 0.4 + a * 0.52 + y * 0.25 + c * 0.27 + z * 0.29 for x, a, y, c, z in
+            zip(l_height, symbol_w, block_empt, case, b_w_amount)]
+
+# add top_location if current features higher than threshold
+b_h_loc = [x if y > 0.75 else 0 for x, y in zip(b_h_loc, Features)]
+Features = [x + y * 0.25 for x, y in zip(Features, b_h_loc)]
+Final = dict(zip(Features, Texts))
+
+case = [x if x >= 0.5 else 0 for x in case]
+f_threshold = [1 if x > 0.8 else 0 for x in Features]
+aver_size = [1 if x > mean(l_height) else 0 for x in l_height]
+aver_lines = [1 if x < mean(lines_amount) / 2 else 0 for x in lines_amount]
+aver_center = [x if x > mean(block_center) else 0 for x in block_center]
+
+print("Spec   ", spec_symbols)
+print("Tags   ", tags)
+print("Thresh ", f_threshold)
+print("Aver_s ", aver_size)
+print("Aver_l ", aver_lines)
+print("Aver_c ", aver_center)
+
+
+confidence_score = [(x + y + z + a + b + c) / 6 for x, y, z, a, b, c in
+                    zip(spec_symbols, tags, f_threshold, aver_size, aver_lines, aver_center)]
+
+norm_Features = [(x - min(Features)) / (max(Features) - min(Features)) if y >= 0.65
+                 else (x - min(Features)) / (max(Features) - min(Features)) * 0.1
+                 for x, y in zip(Features, confidence_score)]
+
+# Final Dictionary
+norm_Final = dict(zip(norm_Features, Texts))
+
+if any([True for x in norm_Features if x > 0.4]):
+    print("Headings Found:", len([x for x in norm_Features if x > 0.4]))
+
+    print("{:.2f}% MAIN HEADING - {}".format(max(norm_Final), norm_Final[max(norm_Final)]))
+    print("------------------------------------------------------------------------------------------------------")
+    for key in norm_Final:
+        if key < max(norm_Final) and key > 0.4:
+            print("{:.2f}% SUB HEADINGS - {}".format(key, norm_Final[key]))
+    print("------------------------------------------------------------------------------------------------------")
+
+else:
+    print("Headings Not Found")
+
+i = 0
+
+for key in norm_Final:
+    print("#{} - {:.2f}, {}".format(i, key, norm_Final[key]))
+    if key > 0.5:
+        results.append(i)
+    i = i + 1
+
+# with open('/home/dim/results.txt', 'a') as the_file:
+#    the_file.write(doc_id+'\n'+str(results)+'\n')
+print(results)
+
+
