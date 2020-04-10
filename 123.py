@@ -11,7 +11,29 @@ from spacy.util import compile_prefix_regex, compile_suffix_regex
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/dim/dm_google_vision.json"
 
-
+# doc_id = 'f2a13f0e994c4d678ff1756ecfc8854d'  # 8.png
+# doc_id='e5d38db182e040e4ba9521587cf45395' #10.png
+# doc_id='3d15ba6c015942ce90eb24bd31cee758'  #2.png
+# doc_id = 'c51f27e3f2494493b5b0f5bdb618b84f' #4.jpg
+# doc_id = 'ae620e6ac5a14a95998d2fdd60ce1c76' #20.pdf
+# doc_id = 'e9437729482847e5847eaad1146c2359'   #10-k
+# doc_id = 'ae37f271db7b498dabb19a0639433cc5'  # 3.png
+# doc_id='7c71d589c78d4cc4b7c3c7d195179144'    #5.png
+# doc_id='8dfc4a2211e443a4b8bd580389dcac13'    #25.pdf
+# doc_id='a8ec515ee3674ab1bd5a73b954d92057'     #16.pdf
+# doc_id='3f8ae2df94824b3382305e9474ab40b1'      #10.pdf
+# doc_id='8de5cb4dc64a4a46b05cb36e120f7142'    #10-1.pdf
+# doc_id='b12dee158d9048fea7e3ad2d3b805d56'    #10-2.pdf
+# doc_id='d368b3283064454f82b66b5016a062da'     #10-3.pdf
+# doc_id='850c44290f894a09884e81aaf9fe137d'    #10-4.pdf
+# doc_id='4685f31b7b6542e29855cbe4498c80c5'    #10-5.pdf
+# doc_id='553bfead3a8c4ceea02ec7d6bcfef898'    #10-6.pdf
+# doc_id='dfecbc2213e1434c85948b652619b042'    #10-7.pdf
+# doc_id='06481c3d1ed34862b4e08b409718c64e'    #10-8.pdf
+# doc_id='af1ba410c93c4152bcb00be9660d490c'    #10-9.pdf
+# doc_id='af1ba410c93c4152bcb00be9660d490c'     #11.png
+# doc_id='9c153c8f4cc24be69903ee8bf767e146'     #12-1.png
+# doc_id='e47034cb83c2496b9db701de9edbf248'     #13.png
 class EntityComparison:
 
     def __init__(self, text1=None, text2=None):
