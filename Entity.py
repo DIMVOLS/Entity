@@ -8,6 +8,7 @@ from spacy.util import compile_prefix_regex, compile_suffix_regex
 from google.cloud import language_v1
 from google.cloud.language_v1 import enums
 from collections import Counter
+from collections import defaultdict
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/dim/dm_google_vision.json"
 
@@ -29,8 +30,7 @@ class EntityComparison:
 
         return Tokenizer(nlp.vocab, prefix_search=prefix_re.search,
                          suffix_search=suffix_re.search,
-                         infix_finditer=infix_re.finditer,
-                         token_match=None)
+                         infix_finditer=infix_re.finditer)
 
     def entity_extract(self, text):
         t = text
@@ -38,7 +38,7 @@ class EntityComparison:
         organizations = []
         entities_list = []
         entities_dict = {}
-        time_reg = r'(?: |^)(?:[0-1]?[0-9]|2[0-3])(?:: [0-5][0-9]){2}\s?(?:[AaPp][Mm])?(?: |$)'
+        time_reg = r'(?: |^)((?:[0-1]?[0-9]|2[0-3])(?:: ?[0-5][0-9]){1,2}\s?(?:[AaPp][Mm])?)(?: |$)'
         tax_reg = r'\b(?![01][789]|2[89]|[46]9|7[089]|89|9[67])\d\d-\d{7}\b'
         zip_reg = r'\W\d{5}(?:[-\s]\d{4})\W'
 
@@ -62,13 +62,13 @@ class EntityComparison:
                 t = re.sub(str(address), ' ', t)
                 entities_list.append('LOC')
                 # print(str(address), " - ADR1")
-                entities_dict[address] = 'LOC'
+                entities_dict[address] = 'LOC2'
 
         elif len(short_address_matches) != 0:
             for address in short_address_matches:
                 t = t.replace(str(address), ' ', 1)
-                entities_list.append('LOC')
-                #  print(str(address), " - ADR2")
+                entities_list.append('LOC3')
+                # print(str(address), " - ADR2")
                 entities_dict[address] = 'LOC'
 
         list1 = {time_reg: 'TIME', zip_reg: 'ZIP', eml_reg: 'EML', currency_reg: 'CURRENCY',
@@ -77,7 +77,7 @@ class EntityComparison:
             matches = re.findall(key, t)
             if len(matches) != 0:
                 for ent in matches:
-                    t = t.replace(ent, '  ', 1)
+                #    t = t.replace(ent, '  ', 1)
                     entities_list.append(list1[key])
                     entities_dict[ent] = list1[key]
 
@@ -92,8 +92,8 @@ class EntityComparison:
         response = client.analyze_entities(document, encoding_type=encoding_type)
 
         # Google extraction
-        list2 = {'PHONE_NUMBER': 'PHN', 'DATE': 'DATE', 'PRICE': 'CURRENCY', 'ORGANIZATION': 'ORG1',
-                 'PERSON': 'PERSON', 'LOCATION': 'LOC1'}
+        list2 = {'PHONE_NUMBER': 'PHN1', 'DATE': 'DATE', 'PRICE': 'CURRENCY', 'ORGANIZATION': 'ORG',
+                 'PERSON': 'PERSON',  'ADDRESS':'ADDRESS1'}
         for key in list2:
             for entity in response.entities:
                 if enums.Entity.Type(entity.type).name == key:
@@ -106,6 +106,8 @@ class EntityComparison:
                         continue
                     entities_dict[entity.name] = list2[key]
                     t = t.replace(entity.name, '  ', 1)
+                   # print(entity.name,enums.Entity.Type(entity.type).name)
+                   # print(t)
 
         nlp = spacy.load("en_core_web_sm")
         # Changing default tokenizer to created
@@ -136,7 +138,8 @@ class EntityComparison:
                                                                 'discount',
                                                                 'payment', 'val', 'price', ]}},
                                               {"TEXT": {"REGEX": r'\W'}, 'OP': '?'},
-                                              {"TEXT": {"REGEX": r"(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]},
+                                              {"TEXT": {"REGEX": r"(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}},
+                                              {'LOWER': {'IN': ['usd','euro','jpy','gbp','chf','cad','zar']},'OP': '?'}]},
             {"label": "CURRENCY", "pattern": [{'LEMMA': {'IN': ['pay', 'earn', 'win',
                                                                 'refund', 'spend',
                                                                 'save', 'invest',
@@ -144,24 +147,49 @@ class EntityComparison:
                                                                 'inherit',
                                                                 'find', 'waste', 'lose', 'lend']}},
                                               {"TEXT": {"REGEX": r'\W'}, 'OP': '?'},
-                                              {"TEXT": {"REGEX": r"(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}}]}
+                                              {"TEXT": {"REGEX": r"(?:(\d{1,3}[ ,]?)+(?:[\.]\d{1,2})?)"}},
+                                              {'LOWER': {'IN': ['usd','euro','jpy','gbp','chf','cad','zar']},'OP': '?'}
+                                              ]}
 
         ]
         ruler.add_patterns(patterns)
         # Priority of ruler
         nlp.add_pipe(ruler, before="ner")
         doc = nlp(t)
+
+
+
         gen = (ents for ents in doc.ents if ents.label_ not in ['DATE'])
 
+        beams = nlp.entity.beam_parse([doc], beam_width=16, beam_density=0.0001)
+
+        entity_scores = defaultdict(float)
+
+        for beam in beams:
+            for score, ents in nlp.entity.moves.get_beam_parses(beam):
+                for start, end, label in ents:
+                    entity_scores[(start, end, label)] += score
+
+
+        for key in entity_scores:
+            start, end, label = key
+            print((f'words : {doc[start: end]} \n'
+                   f' type: {label}\n '
+                   f'with a confidence score = {entity_scores[key]}'))
+
+
+
+        print("Persons- ",persons)
+        print("Orgs- ",organizations)
         for entity in gen:
             if entity.label_ == 'ORG':
                 if any([True for x in [organizations, persons] if entity.text in str(x)]):
-                    entities_dict[entity.text] = 'ORG2'
+                    entities_dict[entity.text] = 'ORG'
                     continue
                 else:
                     for words in organizations:
                         if words in entity.text:
-                            entities_dict[entity.text] = 'ORG2'
+                            entities_dict[entity.text] = 'ORG'
                     continue
             elif entity.text in str(persons) or [True for x in persons if x in entity.text]:
                 entities_dict[entity.text] = 'PERSON'
@@ -169,9 +197,8 @@ class EntityComparison:
 
             entities_list.append(entity.label_)
             entities_dict[entity.text] = entity.label_
-            # print(entity.text, "-", entity.label_)
-        # print(entities_dict)
-
+            print(entity.text, "-", entity.label_)
+        print(entities_dict)
         return entities_dict
 
     @staticmethod
@@ -194,10 +221,26 @@ class EntityComparison:
         else:
             print('YES')
 
-
+tex2  = """(location,
+  'and 4 facility Blackberry Professional Manassas, and VA Data Recovery 20854 Drive, Suite 143 Gaithersburg, and MD FBI 20879 Facility 9520 Reach Blackberry Road Potomac, MD'),
+ (currency,
+  '150.00 262.50 150.00 150.00 $820.00 1.6 150.00 1.75 240.00 $0.00 150.00 0.50 150.00 17.50 $820.00'),
+ (phone, '301-947-7475'),
+ (organization,
+  'FOLSON Forensic Forensics FBI DIGITAL Expert FORENSICS Forensic Digital Forensic'),
+ (date, '05/06/10 06/04/10 04/29/10 06/03/10 04/29/10 05/05/10'),
+ (person,
+  'Forensics Cell FORENSICS Phone Forensic cell phone. Cell Phone Cell phone Forensic Cell Mark Phone Cell Carroll Forensic Phone cell phone'),
+ (number, '21 35')]
+"""
+tex1 = """
+Nokia John Glenn JPMorgan Chase Buzz Aldrin Ping An Insurance Group Wells Fargo Omar Bradley Bank of America Charlie Bury Robert Crippen Francis S. Currey Jimmy Doolittle
+Dwight China Construction Bank D. Eisenhower  China Construction Bank John R. Fox Apple Ulysses S. Grant ICBC
+"""
 # Comparing 2 texts
-# texts = EntityComparison(tex1, tex2)
-# texts.texts_reciever()
+texts = EntityComparison(tex1, tex2)
+#texts.texts_reciever()
 
 # Only entity extracting
-# texts.entity_extract(tex2)
+
+texts.entity_extract(tex2)
