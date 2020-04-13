@@ -17,7 +17,6 @@ class Feature:
                                      word in line.words])
         self.value = self.calculate_value()
 
-
     def calculate_value(self):
         return None
 
@@ -26,16 +25,10 @@ class Size(Feature):
     def calculate_value(self):
         s_width = []
         line = self.block.lines[0]
-        line_words = " ".join([word.value for word in line.words])
-        l_top = line.norm_bbox[1]
-        l_bottom = line.norm_bbox[3]
-        lines_height = (l_bottom - l_top)
         lines_height2 = (line.bbox[3] - line.bbox[1])
         for word in line.words:
             s_width.append(word.get_symbol_sizes()[0][0])
         return lines_height2, mean(s_width)
-
-
 
 
 class Case(Feature):
@@ -131,9 +124,7 @@ def check_headings(page):
     spec_symbols = []
     top_loc = []
     texts = []
-    filter = []
     for block in page.blocks:
-        # block.features
 
         block.features.append(Size(block))
         block.features.append(Case(block))
@@ -156,7 +147,6 @@ def check_headings(page):
         spec_symbols.append(block.features[6].value)
         lines_amount.append(block.features[7].value)
         block_center.append(block.features[8].value)
-        print(lines_amount)
         texts.append(" ".join([word.value for line in block.lines
                                for word in line.words]))
 
@@ -175,18 +165,15 @@ def check_headings(page):
     block_empt = [(x - min(block_empt)) / (max(block_empt) - min(block_empt))
                   for x in block_empt]
 
-
-
     case = [x if x >= 0.45 else 0 for x in case]
-    print(lines_amount,round(mean(lines_amount)))
-
 
     features = [x * 0.23 + a * 0.28 + y * 0.12 + c * 0.11 + z * 0.16
                 for x, a, y, c, z in
                 zip(l_height, symbol_w, block_empt, case, b_w_amount)]
-    lines_amount=[round(x) for x in lines_amount]
+    lines_amount = [round(x) for x in lines_amount]
     # add top_location if current features higher than threshold
-    top_loc = [x if y > 0.4 else 0 for x, y in zip(top_loc, features)]
+    print(l_height)
+    top_loc = [x if y > 0.3 else 0 for x, y in zip(top_loc, features)]
     # final features score
     features = [x + y * 0.15 for x, y in zip(features, top_loc)]
     f_threshold = [1 if x >= 0.5 else -1 for x in features]
@@ -195,26 +182,20 @@ def check_headings(page):
                   for x in lines_amount]
 
     # aver_center = [1 if x > mean(block_center) else 0 for x in block_center]
-    filter = [(x + y + z + a + b) * 0.05  for x, y, z, a, b in
+    filter = [(x + y + z + a + b) * 0.05 for x, y, z, a, b in
               zip(spec_symbols, tags, f_threshold,
-                  aver_size, aver_lines) ]
-    print(spec_symbols)
-    print(tags)
-    print(f_threshold)
-    print(aver_size)
-    print(aver_lines)
-    print(filter)
-    # print(texts,filter)
+                  aver_size, aver_lines)]
+
     confidence_score = [f + x for f, x in
                         zip(features, filter)]
     confidence_score = [x / max(confidence_score) for x in confidence_score]
 
     results = []
 
-    norm_result = [x if x >= 0.5 else x * 0.1 for x in confidence_score]
+    norm_result = [x if x >= 0.44 else x * 0.1 for x in confidence_score]
 
     for i, score in enumerate(norm_result):
-        if score >= 0.45:
+        if score >= 0:
             block_words = DxList([word for line in page.blocks[i].lines
                                   for word in line.words])
             results.append({'page': page, 'bbox': page.blocks[i].bbox,
@@ -227,14 +208,14 @@ def check_headings(page):
 
 def main():
     #doc_id = '9481bfdbd1cc4d61ae4ae4d33334dd78'  # 1.png
-    doc_id = 'a5a4d60668824cbeb44cdef6bc260fb3'      #10-k.pdf
-    #doc_id = '67617a7374f34db3aeea67416491becc'  #3
+    #doc_id = 'a5a4d60668824cbeb44cdef6bc260fb3'  # 10-k.pdf
+    doc_id = '67617a7374f34db3aeea67416491becc'  #3
     #doc_id= '15c48880a2d048049f682b7ac199385b' #13
     with open('tmp/local_storage/{}.dm'.format(doc_id), 'rb') as mf:
         doc = pickle.load(mf)
     page = doc.pages[0]
     check_headings(page)
-    #page.fit()
+    # page.fit()
 
 
 if __name__ == "__main__":
