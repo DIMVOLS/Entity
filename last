@@ -1,0 +1,241 @@
+import pickle
+import nltk
+from statistics import mean
+
+from dxtract import DxList
+
+
+# local test
+# from dxtract.document import StructuralElement
+
+
+class Feature:
+    def __init__(self, block):
+        self.block = block
+        self.page = block.page
+        self.block_words = " ".join([word.value for line in self.block.lines for
+                                     word in line.words])
+        self.value = self.calculate_value()
+
+
+    def calculate_value(self):
+        return None
+
+
+class Size(Feature):
+    def calculate_value(self):
+        s_width = []
+        line = self.block.lines[0]
+        line_words = " ".join([word.value for word in line.words])
+        l_top = line.norm_bbox[1]
+        l_bottom = line.norm_bbox[3]
+        lines_height = (l_bottom - l_top)
+        lines_height2 = (line.bbox[3] - line.bbox[1])
+        for word in line.words:
+            s_width.append(word.get_symbol_sizes()[0][0])
+        return lines_height2, mean(s_width)
+
+
+
+
+class Case(Feature):
+    def calculate_value(self):
+        uc_words1 = 0
+        t_words1 = 0
+        for line in self.block.lines:
+            for word in line.words:
+                # need add different weights for types
+                if word.value.isupper():
+                    uc_words1 = uc_words1 + 1
+                elif word.value.istitle():
+                    t_words1 = t_words1 + 1
+        return (t_words1 + uc_words1) / len(self.block_words.split())
+
+
+class WordsAmount(Feature):
+    def calculate_value(self):
+        block_w_amount = (len(self.block_words.split()))
+        return block_w_amount
+
+
+class TopLocation(Feature):
+    def calculate_value(self):
+        top_loc = self.block.bbox[3] / self.page.bbox[3]
+        return top_loc
+
+
+class BlockEmpt(Feature):
+    def calculate_value(self):
+        block_empt = (self.block.bbox[0] + (self.page.bbox[3] -
+                                            self.block.bbox[2])) / 2
+        return block_empt
+
+
+class Tags(Feature):
+    def calculate_value(self):
+        pos_tagged = nltk.pos_tag(nltk.word_tokenize(self.block_words))
+
+        nouns = list(filter(lambda x: x[1] in ('NN', 'NNS', 'NNP', 'NNPS'),
+                            pos_tagged))
+        verbs = list(filter(lambda x: x[1] in ('VB', 'VBD', 'VBZ', 'VBG',
+                                               'VBP', 'VBN', 'MD'), pos_tagged))
+        digits = list(filter(lambda x: x[1] == 'CD', pos_tagged))
+
+        if len(digits) > 0 or len(verbs) > 1 or len(nouns) < 1:
+            tag = 0
+        else:
+            if any([True for x in ['link:', 'http:', 'https:',
+                                   'www.', '.com', '.html']
+                    if x in self.block_words]):
+                tag = 0
+            else:
+                tag = 1
+
+        return tag
+
+
+class SpecSymbols(Feature):
+    def calculate_value(self):
+        if any([True for x in [';', ',', '//', ':',
+                               '<', '>', '*'] if x in self.block_words]) \
+                or self.block_words.endswith('.'):
+            spec_symbols = 0
+        else:
+            spec_symbols = 1
+        return spec_symbols
+
+
+class LinesAmount(Feature):
+    def calculate_value(self):
+        lines_amount = (self.block.bbox[3] - self.block.bbox[1]) / self.block.features[0].value[0]
+        return lines_amount
+
+
+class BlockCenter(Feature):
+    def calculate_value(self):
+        # need change
+        block_center = min(self.block.bbox[0], (self.page.bbox[2]
+                                                - self.block.bbox[2]))
+        return block_center
+
+
+def check_headings(page):
+    case = []
+    l_height = []
+    b_w_amount = []
+    block_empt = []
+    block_center = []
+    symbol_w = []
+    tags = []
+    lines_amount = []
+    spec_symbols = []
+    top_loc = []
+    texts = []
+    filter = []
+    for block in page.blocks:
+        # block.features
+
+        block.features.append(Size(block))
+        block.features.append(Case(block))
+        block.features.append(WordsAmount(block))
+        block.features.append(TopLocation(block))
+        block.features.append(BlockEmpt(block))
+        block.features.append(Tags(block))
+        block.features.append(SpecSymbols(block))
+        block.features.append(LinesAmount(block))
+        block.features.append(BlockCenter(block))
+        # list of each feature for comparing
+
+        l_height.append(Size(block).value[0])
+        symbol_w.append(Size(block).value[1])
+        case.append(block.features[1].value)
+        b_w_amount.append(block.features[2].value)
+        top_loc.append(block.features[3].value)
+        block_empt.append(block.features[4].value)
+        tags.append(block.features[5].value)
+        spec_symbols.append(block.features[6].value)
+        lines_amount.append(block.features[7].value)
+        block_center.append(block.features[8].value)
+        print(lines_amount)
+        texts.append(" ".join([word.value for line in block.lines
+                               for word in line.words]))
+
+    b_w_amount = ([1 - x / mean(b_w_amount) if x < mean(b_w_amount)
+                   else 0 for x in b_w_amount])
+
+    top_loc = ([1 - (x - min(top_loc)) / (max(top_loc) - min(top_loc))
+                for x in top_loc])
+
+    l_height = [(x - min(l_height)) / (max(l_height) - min(l_height))
+                for x in l_height]
+
+    symbol_w = [(x - min(symbol_w)) / (max(symbol_w) - min(symbol_w))
+                for x in symbol_w]
+
+    block_empt = [(x - min(block_empt)) / (max(block_empt) - min(block_empt))
+                  for x in block_empt]
+
+
+
+    case = [x if x >= 0.45 else 0 for x in case]
+    print(lines_amount,round(mean(lines_amount)))
+
+
+    features = [x * 0.23 + a * 0.28 + y * 0.12 + c * 0.11 + z * 0.16
+                for x, a, y, c, z in
+                zip(l_height, symbol_w, block_empt, case, b_w_amount)]
+    lines_amount=[round(x) for x in lines_amount]
+    # add top_location if current features higher than threshold
+    top_loc = [x if y > 0.4 else 0 for x, y in zip(top_loc, features)]
+    # final features score
+    features = [x + y * 0.15 for x, y in zip(features, top_loc)]
+    f_threshold = [1 if x >= 0.5 else -1 for x in features]
+    aver_size = [1 if x > mean(l_height) else 0 for x in l_height]
+    aver_lines = [1 if x <= round(mean(lines_amount)) else 0
+                  for x in lines_amount]
+
+    # aver_center = [1 if x > mean(block_center) else 0 for x in block_center]
+    filter = [(x + y + z + a + b) * 0.05  for x, y, z, a, b in
+              zip(spec_symbols, tags, f_threshold,
+                  aver_size, aver_lines) ]
+    print(spec_symbols)
+    print(tags)
+    print(f_threshold)
+    print(aver_size)
+    print(aver_lines)
+    print(filter)
+    # print(texts,filter)
+    confidence_score = [f + x for f, x in
+                        zip(features, filter)]
+    confidence_score = [x / max(confidence_score) for x in confidence_score]
+
+    results = []
+
+    norm_result = [x if x >= 0.5 else x * 0.1 for x in confidence_score]
+
+    for i, score in enumerate(norm_result):
+        if score >= 0.45:
+            block_words = DxList([word for line in page.blocks[i].lines
+                                  for word in line.words])
+            results.append({'page': page, 'bbox': page.blocks[i].bbox,
+                            'se_type': 'heading', 'score': score,
+                            'words': block_words})
+            print(i,score, page.blocks[i])
+
+    return results
+
+
+def main():
+    #doc_id = '9481bfdbd1cc4d61ae4ae4d33334dd78'  # 1.png
+    doc_id = 'a5a4d60668824cbeb44cdef6bc260fb3'      #10-k.pdf
+    #doc_id = '67617a7374f34db3aeea67416491becc'  #3
+    #doc_id= '15c48880a2d048049f682b7ac199385b' #13
+    with open('tmp/local_storage/{}.dm'.format(doc_id), 'rb') as mf:
+        doc = pickle.load(mf)
+    page = doc.pages[0]
+    check_headings(page)
+    #page.fit()
+
+
+if __name__ == "__main__":
+    main()
