@@ -1,0 +1,71 @@
+import json
+import pickle
+#from dxtract.entity import entities
+import pytest
+#from dxtract.entity.entities import SpacyEngine
+from dxtract.document import Document
+import configs.config
+from dxtract.entity.entities import EntityClass, \
+    RegexEngine, SpacyEngine, GoogleEngine
+from dxtract.smart_search import SmartSearch
+from dxtract.template import Template, FieldValueType, FieldValuePosition
+from storage import file_storage
+
+
+
+def engine_result(text):
+    result_list = 0
+    result_list = RegexEngine.extract_entities(text)
+    return result_list
+
+# dm : ent.dm
+class TestEntities:
+    def Doc(self):
+        path = 'tests/storage/ent.dm'
+        print("AZA")
+        with open(path, 'rb') as f:
+            document = pickle.load(f)
+        text = []
+        if text is None:
+            text = []
+            for block in document.pages[0].blocks:
+                block_text = ''
+                for line in block.lines:
+                    block_text += \
+                        ' '.join([word.value for word in line.words]) + ' '
+                text.append(block_text)
+            separator = ' noise ' * 3 + '. '
+            text = separator.join(text)
+        print("AZAza")
+
+        #ee = RegexEngine()
+        #print(ee.extract_entities(text))
+
+        return document.pages[0]
+
+        def test_regex_engine_result(self, text):
+            result = RegexEngine.extract_entities(text)
+            assert len(result) == 20
+        """
+        def test_aws_engine_result(self, text):
+            result = engine_result(text)
+            assert len(result) == 20
+
+        def test_google_engine_result(self, text):
+            result = engine_result(text)
+            assert len(result) == 20
+
+        def test_spacy_engine_result(self, text):
+            result = engine_result(text)
+            assert len(result) == 20
+        """
+print("TESTT")
+TestEntities.test_regex_engine_result()
+
+
+
+
+
+    # def test_clean(self, extraction):
+    #     os.remove('tmp/local_storage/1234.tm')
+    #     os.remove('tmp/local_storage/5678.dm')
