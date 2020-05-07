@@ -1,0 +1,317 @@
+#include "stdafx.h"
+#include <winsock2.h>
+#pragma comment (lib,"ws2_32.lib")
+#include <string>
+#include <iostream>
+#include "SendAppServer.h"
+using namespace std;
+
+#define ID_CONNECT 9
+#define ID_COUNT 1
+#define ID_EDIT1 2
+#define ID_EDIT2 3
+#define ID_EDIT3 4
+#define ID_EDIT4 5
+#define ID_EXIT 6
+#define ID_STATIC 7
+#define ID_STATIC1 8
+#define MAX_LOADSTRING 100
+
+#define PORT 2206
+#define PORTS 2207
+
+HWND hEdit, hEditIP;
+
+// Global Variables:
+HINSTANCE hInst;								// current instance
+TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
+TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
+
+// Forward declarations of functions included in this code module:
+ATOM				MyRegisterClass(HINSTANCE hInstance);
+BOOL				InitInstance(HINSTANCE, int);
+LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
+
+// ������� ����������� ����� � ������ ������
+void GetLocalIP()
+{
+	char chInfo[64];
+		if (!gethostname(chInfo,sizeof(chInfo)))
+		{
+			hostent *sh;
+			sh=gethostbyname((char*)&chInfo);
+			if (sh!=NULL)
+			{
+				int nAdapter = 0;
+					struct sockaddr_in adr;
+					memcpy(&adr.sin_addr,sh->h_addr_list[nAdapter],sh->h_length); 
+					SendMessage(hEditIP, EM_REPLACESEL, 0, LPARAM(inet_ntoa(adr.sin_addr)));
+			}
+		}
+		else
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("Error local host "));
+}
+
+//������� ������� �������.
+int clear_massiv (char *MAS)
+	{
+		for(int i=0; i<1024; i++)
+			MAS[i] = NULL;
+		return 0;
+	}
+
+//������� �������� �������� �� ������� � ������� �������
+DWORD WINAPI ClientThread(LPVOID lpParam)
+{
+    SOCKET        sock = (SOCKET)lpParam;
+    char          szRecvBuff[1024], szSendBuff[1024];
+    int           ret;
+
+    while(1)
+    {
+		ret = recv(sock, szRecvBuff, 1024, 0);
+		szRecvBuff[ret] = 0;
+        if (ret == 0)
+            break;
+        else if (ret == SOCKET_ERROR)
+        {
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("���� �������\r\n"));
+            break;
+        }
+		else
+		{
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("������: "));
+			SendMessage(hEdit, EM_REPLACESEL, 0, LPARAM(szRecvBuff));
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("\r\n"));
+		}
+
+	//����������� � ����� � o�������� �������
+	strcpy_s(szSendBuff, szRecvBuff);
+
+    ret = send(sock, szSendBuff, sizeof(szSendBuff), 0);
+        if (ret == SOCKET_ERROR)
+        {
+           break;
+        }
+
+	clear_massiv(szRecvBuff);
+	clear_massiv(szSendBuff);
+
+	}
+    return 0;
+}
+
+//������� �������� �������, �������, ���� ����������� ��������.
+DWORD WINAPI NetThread(LPVOID lpParam)
+{
+    SOCKET			sServerListen, sClient;
+    struct			sockaddr_in localaddr, clientaddr;
+    HANDLE			hThread;
+    DWORD			dwThreadId;
+    int				iSize;
+
+	sServerListen = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    if (sServerListen == SOCKET_ERROR)
+    {
+		SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("���������� ������� �����\r\n"));
+        return 0;
+    }
+	else 
+		SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("����� ������\r\n"));
+
+    localaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    localaddr.sin_family = AF_INET;
+    localaddr.sin_port = htons(PORT);
+
+    if (bind(sServerListen, (struct sockaddr *)&localaddr, sizeof(localaddr)) == SOCKET_ERROR)
+    {
+		SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("������ ������� Bind( )\r\n"));
+        return 1;
+    }
+	else
+		SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("�������� ���������� ������� Bind( )\r\n"));
+
+    listen(sServerListen, 2);
+
+    SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("�������� ���������� ������� Listen( )\r\n"));
+
+    while (1)
+    {
+        iSize = sizeof(clientaddr);
+        sClient = accept(sServerListen, (struct sockaddr *)&clientaddr, &iSize);        
+        if (sClient == INVALID_SOCKET)
+        {        
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("������ ������\r\n"));
+            break;
+        }
+		else
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("������ ��������\r\n"));
+
+        hThread = CreateThread(NULL, 0, ClientThread, (LPVOID)sClient, 0, &dwThreadId);
+        if (hThread == NULL)
+        {
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("�������� ������ ��������\r\n"));
+            break;
+        }
+		else
+			SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("����� ������\r\n"));
+        CloseHandle(hThread);
+    }
+
+    closesocket(sServerListen);
+    return 0;
+}
+
+int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow)
+{
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
+
+ 	// TODO: Place code here.
+	MSG msg;
+	HACCEL hAccelTable;
+
+	// Initialize global strings
+	LoadString(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
+	LoadString(hInstance, IDC_SENDAPPSERVER, szWindowClass, MAX_LOADSTRING);
+	MyRegisterClass(hInstance);
+
+	// Perform application initialization:
+	if (!InitInstance (hInstance, nCmdShow))
+		return FALSE;
+
+	hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_SENDAPPSERVER));
+
+	WSADATA       wsd;
+    if (WSAStartup(MAKEWORD(2,2), &wsd) != 0)
+	{
+		SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("���������� ��������� WinSock\r\n"));
+		return 0;
+	}
+	//else
+	//	SendMessage(hEdit, EM_REPLACESEL, 0, (LPARAM)TEXT("WinSock ���������\r\n"));
+
+//**************************
+	GetLocalIP();
+//**************************
+
+	// Main message loop:
+	while (GetMessage(&msg, NULL, 0, 0))
+	{
+		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+	return (int) msg.wParam;
+}
+
+ATOM MyRegisterClass(HINSTANCE hInstance)
+{
+	WNDCLASSEX wcex;
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+
+	wcex.style			= CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc	= WndProc;
+	wcex.cbClsExtra		= 0;
+	wcex.cbWndExtra		= 0;
+	wcex.hInstance		= hInstance;
+	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SENDAPPSERVER));
+	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
+	wcex.hbrBackground	= CreateSolidBrush(RGB(157,203,255)); //���� ���� ����
+	//wcex.lpszMenuName	= MAKEINTRESOURCE(IDC_SENDAPP);
+	wcex.lpszMenuName	= 0;
+	wcex.lpszClassName	= szWindowClass;
+	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+	return RegisterClassEx(&wcex);
+}
+
+BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+{
+   HWND hWnd;
+
+   hInst = hInstance; // Store instance handle in our global variable
+
+   hWnd = CreateWindow(szWindowClass, szTitle,
+	WS_OVERLAPPEDWINDOW|WS_VISIBLE | DS_SETFONT |DS_MODALFRAME | 
+	DS_3DLOOK | DS_FIXEDSYS |WS_CAPTION | WS_SYSMENU,
+	50,50,600,400,(HWND)NULL,(HMENU)NULL,hInstance,(LPSTR)NULL);
+
+   if (!hWnd)
+      return FALSE;
+
+   ShowWindow(hWnd, nCmdShow);
+   UpdateWindow(hWnd);
+
+   return TRUE;
+}
+
+LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	int wmId, wmEvent;
+	PAINTSTRUCT ps;
+	HDC hdc;
+
+	switch (message)
+	{
+	case WM_CREATE:
+
+		//����� 2
+		CreateWindow("static", "������",
+		WS_CHILD|WS_VISIBLE|SS_LEFT,
+		40,300,50,16,hWnd, (HMENU)ID_STATIC1, hInst, NULL);
+
+		//���� ����� 2
+		hEdit = CreateWindow("edit", NULL, WS_CHILD|WS_VISIBLE|ES_LEFT|WS_VSCROLL|ES_MULTILINE|ES_READONLY,
+		40,20,500,270,hWnd, (HMENU)ID_EDIT2, hInst, NULL);
+
+		//���� ����� IP-������ �������
+		hEditIP = CreateWindow("edit", NULL, WS_CHILD|WS_VISIBLE|ES_LEFT|ES_MULTILINE|ES_READONLY,
+		100,300,120,16,hWnd, (HMENU)ID_EDIT3, hInst, NULL);
+
+
+		//������ "Listen"
+		CreateWindow("button", "�������", WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
+		450,300,90,20, hWnd, (HMENU)ID_COUNT, hInst, NULL);
+
+//****************************
+		break;
+
+
+	case WM_COMMAND:
+		wmId    = LOWORD(wParam);
+		wmEvent = HIWORD(wParam);
+		// Parse the menu selections:
+		switch (wmId)
+		{
+
+		case ID_COUNT:
+		{
+			HANDLE        hNetThread;
+			DWORD         dwNetThreadId;
+			hNetThread = CreateThread(NULL, 0, NetThread, 0, 0, &dwNetThreadId);
+
+			break;
+		}
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
+		break;
+	case WM_PAINT:
+		hdc = BeginPaint(hWnd, &ps);
+		// TODO: Add any drawing code here...
+		EndPaint(hWnd, &ps);
+		break;
+
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return 0;
+}
